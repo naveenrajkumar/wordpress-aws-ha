@@ -1,0 +1,66 @@
+
+Parameters:
+  NumberOfSubnets:
+    AllowedValues:
+    - 2
+    - 3
+    Default: 2
+    Description: Number of subnets. This must match your selections in the list of Subnets below.
+    Type: String 
+  SecurityGroup:
+    Description: Select the Amazon EFS security group.
+    Type: AWS::EC2::SecurityGroup::Id   
+  Subnet:
+    Description: Select existing subnets.
+    Type: List<AWS::EC2::Subnet::Id>
+Conditions:
+  NumberOfSubnets1:
+      !Equals [ 1, !Ref NumberOfSubnets ]
+  NumberOfSubnets2:
+      !Equals [ 2, !Ref NumberOfSubnets ]
+  NumberOfSubnets3:
+      !Equals [ 3, !Ref NumberOfSubnets ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet2: !Condition NumberOfSubnets3
+Resources:
+  #Elastic File System Resources:
+  ElasticFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: false
+      FileSystemTags:
+        - Key: Name
+          Value: !Join [ '', [ 'WordPress / ', !Ref 'AWS::StackName' ] ]
+  ElasticFileSystemMountTarget0:
+    Condition: Subnet0
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref ElasticFileSystem
+      SecurityGroups:
+      - !Ref SecurityGroup
+      SubnetId: !Select [ 0, !Ref Subnet ]
+  ElasticFileSystemMountTarget1:
+    Condition: Subnet1
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref ElasticFileSystem
+      SecurityGroups:
+      - !Ref SecurityGroup
+      SubnetId: !Select [ 1, !Ref Subnet ]
+  ElasticFileSystemMountTarget2:
+    Condition: Subnet2
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref ElasticFileSystem
+      SecurityGroups:
+      - !Ref SecurityGroup
+      SubnetId: !Select [ 2, !Ref Subnet ]
+Outputs:
+  ElasticFileSystem:
+    Value: !Ref ElasticFileSystem

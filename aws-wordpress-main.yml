@@ -1,0 +1,391 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack to run wordpress HA on ap-southeast-2 region
+
+Metadata:
+  Authours:
+    Descritpion: Naveen Rajkumar - rajkumar.naveen@gmail.com
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: VPC Parameters
+      Parameters:
+      - NumberofAZs
+      - AvailabilityZones
+      - VpcCidr
+      - VpcTenancy
+      - PublicSubnet0Cidr
+      - PublicSubnet1Cidr
+      - PublicSubnet2Cidr
+      - PrivateSubnet0Cidr
+      - PrivateSubnet1Cidr
+      - PrivateSubnet2Cidr
+  
+    ParameterLabels:
+      AvailabilityZones:
+        default: Availability Zones
+      NumberOfAZs:
+        default: Number of Availability Zones
+      VpcCidr:
+        default: VpcCidr
+      VpcTenancy:
+        default: VpcTenancy
+      PublicSubnet0Cidr:
+        default: Public Subnet 0
+      PublicSubnet1Cidr:
+        default: Public Subnet 1
+      PublicSubnet2Cidr:
+        default: Public Subnet 2
+      PrivateSubnet0Cidr:
+        default: Private Subnet 0
+      PrivateSubnet1Cidr:
+        default: Private Subnet 1
+      PrivateSubnet2Cidr:
+        default: Private Subnet 2
+
+Parameters:
+  #Generic Parameters
+  EC2KeyName:
+    Description: EC2 KeyPair for bastion and Wordpress intances
+    Type: AWS::EC2::KeyPair::KeyName  
+
+  #VPC Parameters
+  AvailabilityZones: 
+    Description: 'List of Availability Zones.'
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+
+  NumberOfAZs:
+    AllowedValues:
+    - 1
+    - 2
+    - 3
+    Default: 2
+    Description: Number of Availability Zones to use in the VPC. This must match your
+      selections in the list of Availability Zones parameter.
+    Type: Number
+  # Subnet:
+  #   Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+  #   Type: List<AWS::EC2::Subnet::Id>
+  VpcCidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR Form x.x.x.x/16-28
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+    Type: String
+  AvailabilityZones:
+    Description: 'List of Availability Zones to use for the subnets in the VPC. Note:
+      The logical order is preserved.'
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+  PublicSubnet0Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.20.0/24
+    Description: CIDR block for Public subnet 0 located in Availability Zone 0
+    Type: String
+  PublicSubnet1Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.21.0/24
+    Description: CIDR block for Public subnet 1 located in Availability Zone 1
+    Type: String
+  PublicSubnet2Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.22.0/24
+    Description: CIDR block for Public subnet 2 located in Availability Zone 2
+    Type: String
+  PrivateSubnet0Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.10.0/24
+    Description: CIDR block for data subnet 0 located in Availability Zone 0
+    Type: String
+  PrivateSubnet1Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.11.0/24
+    Description: CIDR block for data subnet 1 located in Availability Zone 1
+    Type: String
+  PrivateSubnet2Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.12.0/24
+    Description: CIDR block for data subnet 2 located in Availability Zone 2
+    Type: String
+  #Bastion Parameters
+  SshAccessCidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+    Description: The CIDR IP range permitted to SSH to bastion instance. 
+    Type: String
+    Default: 0.0.0.0/0
+  BastionInstanceType:
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t2.nano
+    Description: Bastion EC2 instance type.
+    Type: String
+    AllowedValues:
+    - t2.nano 
+    - t2.micro 
+    - t2.small 
+    - t2.medium 
+    - t2.large 
+    - t2.xlarge 
+    - t2.2xlarge 
+    - m3.medium 
+    - m3.large 
+    - m3.xlarge 
+    - m3.2xlarge 
+    - m4.large 
+    - m4.xlarge 
+    - m4.2xlarge 
+    - m4.4xlarge 
+    - m4.10xlarge 
+    - m4.16xlarge 
+  # Database Parameters
+  DatabaseInstanceType:
+    AllowedValues:
+      - db.t2.small
+      - db.t2.medium
+      - db.r3.large
+      - db.r3.xlarge
+      - db.r3.2xlarge
+      - db.r3.4xlarge
+      - db.r3.8xlarge
+      - db.r4.large
+      - db.r4.xlarge
+      - db.r4.2xlarge
+      - db.r4.4xlarge
+      - db.r4.8xlarge
+      - db.r4.16xlarge
+    Default: db.t2.medium
+    Description: The Amazon RDS database instance class.
+    Type: String
+  DatabaseMasterUsername:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+    MaxLength: 16
+    MinLength: 8
+    Type: String
+    Default: naveen123
+  DatabaseMasterPassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+    Default: naveen_123
+  DatabaseName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Type: String
+    Default: naveen123
+  WebAsgMax:
+    AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 4
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebAsgMin:
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebInstanceType:
+    AllowedValues:
+    - t2.nano 
+    - t2.micro 
+    - t2.small 
+    - t2.medium 
+    - t2.large 
+    - t2.xlarge 
+    - t2.2xlarge 
+    - m3.medium 
+    - m3.large 
+    - m3.xlarge 
+    - m3.2xlarge 
+    - m4.large 
+    - m4.xlarge 
+    - m4.2xlarge 
+    - m4.4xlarge 
+    - m4.10xlarge 
+    - m4.16xlarge 
+    - m5.large 
+    - m5.xlarge 
+    - m5.2xlarge 
+    - m5.4xlarge 
+    - m5.12xlarge 
+    - m5.24xlarge
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t2.micro
+    Description: The Amazon EC2 instance type for your web instances.
+    Type: String 
+Conditions:
+  AvailableAWSRegion:
+    !Or [
+        !Equals [ !Ref 'AWS::Region', ap-southeast-2 ],
+        !Equals [ !Ref 'AWS::Region', us-east-2 ]
+      ]
+  NumberOfSubnets1:
+      !Equals [ 1, !Ref NumberOfAZs ]
+  NumberOfSubnets2:
+      !Equals [ 2, !Ref NumberOfAZs ]
+  NumberOfSubnets3:
+      !Equals [ 3, !Ref NumberOfAZs ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet2: !Condition NumberOfSubnets3
+
+Resources:
+  vpc:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        NumberOfAZs:
+          !Ref NumberOfAZs
+        AvailabilityZones:
+          !Join
+            - ','
+            - !Ref AvailabilityZones
+        VpcCidr:
+          !Ref VpcCidr
+        PublicSubnet0Cidr:
+          !Ref PublicSubnet0Cidr
+        PublicSubnet1Cidr:
+          !Ref PublicSubnet1Cidr
+        PublicSubnet2Cidr:
+          !Ref PublicSubnet2Cidr
+        PrivateSubnet0Cidr:
+          !Ref PrivateSubnet0Cidr
+        PrivateSubnet1Cidr:
+          !Ref PrivateSubnet1Cidr
+        PrivateSubnet2Cidr:
+          !Ref PrivateSubnet2Cidr
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-vpc.yml
+  securitygroups:
+    Condition: AvailableAWSRegion
+    DependsOn: vpc
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        SshAccessCidr:
+          !Ref SshAccessCidr
+        Vpc:
+          !GetAtt [ vpc, Outputs.Vpc ]
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-securitygroups.yml
+  bastion:
+    Condition: AvailableAWSRegion
+    DependsOn: [ vpc, securitygroups ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        BastionInstanceType:
+          !Ref BastionInstanceType
+        BastionSecurityGroup:
+          !GetAtt [ securitygroups, Outputs.BastionSecurityGroup ]
+        EC2KeyName:
+          !Ref EC2KeyName
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+        Subnet:
+          !GetAtt [ vpc, Outputs.PublicSubnet ]
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-bastion.yml
+      # TemplateURL: https://s3.amazonaws.com/aws-refarch/wordpress/latest/templates/aws-refarch-wordpress-03-bastion.yaml
+  efsfilesystem:
+    DependsOn: [ vpc, securitygroups ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        SecurityGroup:
+          !GetAtt [ securitygroups, Outputs.EfsSecurityGroup ]
+        NumberOfSubnets:
+          !Ref NumberOfAZs  
+        Subnet:
+          !GetAtt [ vpc, Outputs.PrivateSubnet ]
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-efs.yml
+  PublicAlb:
+    Condition: AvailableAWSRegion
+    DependsOn: [ vpc, securitygroups ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+        Subnet:
+          !GetAtt [ vpc, Outputs.PublicSubnet ]
+        PublicAlbSecurityGroup:
+          !GetAtt [ securitygroups, Outputs.PublicAlbSecurityGroup ]
+        Vpc:
+          !GetAtt [ vpc, Outputs.Vpc ]
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-alb.yml
+  rds:
+    Condition: AvailableAWSRegion
+    DependsOn: [ vpc, securitygroups ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DatabaseInstanceType:
+          !Ref DatabaseInstanceType
+        DatabaseMasterUsername:
+          !Ref DatabaseMasterUsername
+        DatabaseMasterPassword:
+          !Ref DatabaseMasterPassword
+        DatabaseName:
+          !Ref DatabaseName
+        DatabaseSecurityGroup:
+          !GetAtt [ securitygroups, Outputs.DatabaseSecurityGroup ]
+        Subnet:
+          !GetAtt [ vpc, Outputs.PrivateSubnet ]
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-rds.yml
+  web:
+    DependsOn: [ efsfilesystem, vpc, PublicAlb, securitygroups ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DatabaseMasterUsername:
+          !Ref DatabaseMasterUsername
+        DatabaseMasterPassword:
+          !Ref DatabaseMasterPassword
+        DatabaseName:
+          !Ref DatabaseName
+        ElasticFileSystem:
+          !GetAtt [ efsfilesystem, Outputs.ElasticFileSystem ]
+        EC2KeyName:
+          !Ref EC2KeyName
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+        PublicAlbTargetGroupArn:
+          !GetAtt [ PublicAlb, Outputs.PublicAlbTargetGroupArn ]
+        WebAsgMax:
+          !Ref WebAsgMax
+        WebAsgMin:
+          !Ref WebAsgMin
+        WebInstanceType:
+          !Ref WebInstanceType
+        WebSecurityGroup:
+          !GetAtt [ securitygroups, Outputs.WebSecurityGroup ]
+        PublicAlbDnsName:
+          !GetAtt [ PublicAlb, Outputs.PublicAlbDnsName ]
+        Subnet:
+          !GetAtt [ vpc, Outputs.PrivateSubnet ]
+        DatabaseClusterEndpointAddress:
+          !GetAtt [ rds, Outputs.DatabaseClusterEndpointAddress ]          
+      TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-wordpress.yml
+Outputs:
+  WordPressUrl:
+    Value: 
+      !GetAtt [ web, Outputs.wproot ]
+  
+    

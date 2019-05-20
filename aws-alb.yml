@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description:  Creates Application Load Balancer
+Parameters:
+  NumberOfSubnets:
+      AllowedValues:
+      - 1
+      - 2
+      - 3
+      Default: 2
+      Description: Number of subnets. This must match your selections in the list of subnets below.
+      Type: String 
+  PublicAlbSecurityGroup:
+    Description: Select the ALB security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  Subnet:
+    Description: Select existing subnets.
+    Type: List<AWS::EC2::Subnet::Id>
+  Vpc:
+    Description: Select an existing Vpc
+    Type: AWS::EC2::VPC::Id
+Conditions:
+
+  NumberOfSubnets1:
+      !Equals [ 1, !Ref NumberOfSubnets ]
+  NumberOfSubnets2:
+      !Equals [ 2, !Ref NumberOfSubnets ]
+  NumberOfSubnets3:
+      !Equals [ 3, !Ref NumberOfSubnets ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet2: !Condition NumberOfSubnets3
+
+Resources:
+  #Public ALB Resources
+  PublicAlbListener:
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref PublicAlbTargetGroup
+      LoadBalancerArn: !Ref PublicApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  PublicApplicationLoadBalancer: 
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+        !If
+          [ NumberOfSubnets1,
+          [ !Select [ 0, !Ref Subnet ] ],
+          !If
+            [ NumberOfSubnets2,
+            [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ] ],
+            !If
+              [ NumberOfSubnets3,
+              [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ] ],
+              [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ], !Select [ 3, !Ref Subnet ] ]
+              ]
+            ]
+          ]
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: 60
+      SecurityGroups:
+      - !Ref PublicAlbSecurityGroup
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'Public ALB / ', !Ref 'AWS::StackName' ] ]
+  PublicAlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /wp-login.php
+      HealthCheckTimeoutSeconds: 5
+      Port: 80
+      Protocol: HTTP
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'Public ALB / ', !Ref 'AWS::StackName' ] ]
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref Vpc
+Outputs:
+  PublicAlbTargetGroupArn:
+    Value:
+      !Ref PublicAlbTargetGroup
+  PublicAlbCanonicalHostedZoneId:
+    Value:
+      !GetAtt PublicApplicationLoadBalancer.CanonicalHostedZoneID
+  PublicAlbDnsName:
+    Value:
+      !GetAtt PublicApplicationLoadBalancer.DNSName
+  PublicAlbFullName:
+    Value:
+      !GetAtt PublicApplicationLoadBalancer.LoadBalancerFullName
+  PublicAlbHostname:
+    Value:
+       !Join [ '', [ 'http://', !GetAtt PublicApplicationLoadBalancer.DNSName ] ]
+
+

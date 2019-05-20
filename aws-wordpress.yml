@@ -1,0 +1,299 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates WordPress web Auto Scaling group
+
+Mappings:
+  RegionMap:
+    ap-southeast-2:
+      AMI: ami-ff4ea59d
+    us-east-2:
+      AMI: ami-15e9c770
+Parameters:
+  DatabaseMasterUsername:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+    MaxLength: 16
+    MinLength: 8
+    Type: String
+  DatabaseMasterPassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+  DatabaseName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Type: String
+  DatabaseClusterEndpointAddress:
+    Description: DB Cluster Endpoint Adress
+    Type: String
+  WebAsgMax:
+    AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 4
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebAsgMin:
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  ElasticFileSystem:
+    AllowedPattern: ^(fs-)([a-z0-9]{8})$
+    Description: The Amazon EFS file system id.
+    Type: String
+  WebInstanceType:
+    AllowedValues:
+    - t2.nano 
+    - t2.micro 
+    - t2.small 
+    - t2.medium 
+    - t2.large 
+    - t2.xlarge 
+    - t2.2xlarge 
+    - m3.medium 
+    - m3.large 
+    - m3.xlarge 
+    - m3.2xlarge 
+    - m4.large 
+    - m4.xlarge 
+    - m4.2xlarge 
+    - m4.4xlarge 
+    - m4.10xlarge 
+    - m4.16xlarge 
+    - m5.large 
+    - m5.xlarge 
+    - m5.2xlarge 
+    - m5.4xlarge 
+    - m5.12xlarge 
+    - m5.24xlarge
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t2.micro
+    Description: The Amazon EC2 instance type for your web instances.
+    Type: String 
+  EC2KeyName:
+    Description: EC2 KeyPair for bastion and Wordpress intances
+    Type: AWS::EC2::KeyPair::KeyName 
+  WebSecurityGroup:
+    Description: Select the database security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  PublicAlbTargetGroupArn:
+    Description: Select ELB Target Group.
+    Type: String
+  NumberOfSubnets:
+    AllowedValues:
+    - 1
+    - 2
+    - 3
+    Default: 2
+    Description: Number of subnets. This must match your selections in the list of subnets below.
+    Type: String 
+  Subnet:
+    Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+    Type: List<AWS::EC2::Subnet::Id>
+  PublicAlbDnsName:
+    Description: Public DNS Name from ALB
+    Type: String
+Conditions:
+  NumberOfSubnets1:
+      !Equals [ 1, !Ref NumberOfSubnets ]
+  NumberOfSubnets2:
+      !Equals [ 2, !Ref NumberOfSubnets ]
+  NumberOfSubnets3:
+      !Equals [ 3, !Ref NumberOfSubnets ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+  Subnet2: !Condition NumberOfSubnets3
+
+Resources:
+  WebInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref WebInstanceRole
+  WebInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogStreams
+            Resource:
+            - arn:aws:logs:*:*:*
+  WebLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          wordpress:
+            - "configure_cfn"
+            - "install_wordpress"
+            - "config_wordpress"
+        configure_cfn:
+          files:
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource WebLaunchConfiguration --configsets wordpress --region ${AWS::Region}
+              mode: "000400"
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                verbose=true
+                interval=5
+              mode: "000400"
+              owner: root
+              group: root
+            /var/www/html/index2.html:
+              content: "test9"
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/cfn/cfn-hup.conf"
+                  - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+        install_wordpress:
+          packages:
+            yum:
+              httpd: []
+              php: []
+              mysql: []
+              php-mysql: []
+          sources:
+            /var/www/html: "https://wordpress.org/wordpress-4.9.10.tar.gz"
+          services:
+            sysvinit:
+              httpd:
+                enabled: "true"
+                ensureRunning: "true"
+        config_wordpress:
+          commands:
+            01_clone_config:
+              cwd: "/var/www/html/wordpress"
+              test: "test ! -e /var/www/html/wordpress/wp-config.php"
+              command: "cp wp-config-sample.php wp-config.php"
+            02_inject_dbhost:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                sed -i 's/localhost/${DatabaseClusterEndpointAddress}/g' wp-config.php
+            03_inject_dbname:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                sed -i 's/database_name_here/${DatabaseName}/g' wp-config.php            
+            04_inject_dbuser:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                sed -i 's/username_here/${DatabaseMasterUsername}/g' wp-config.php
+            05_inject_dbpassword:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub | 
+                sed -i 's/password_here/${DatabaseMasterPassword}/g' wp-config.php
+            07a_inject_IP_1: # this allows a restore & change of IP without causing WP errors.
+              cwd: "/var/www/html/wordpress"
+              command: echo "define('WP_SITEURL', 'http://${PublicAlbDnsName}/wordpress');" >> wp.config.php
+            07b_inject_IP_2: # this allows a restore & change of IP without causing WP errors.
+              cwd: "/var/www/html/wordpress"
+              command: echo "define('WP_HOME','http://${PublicAlbDnsName}/wordpress');" >> wp-config.php
+            08a_update_theme_1:
+              cwd: "/var/www/html/wordpress"
+              command: echo "update_option('siteurl','http://${PublicAlbDnsName}/wordpress');" >> /var/www/html/wordpress/wp-content/themes/twentyseventeen/functions.php
+            08a_update_theme_2:
+              cwd: "/var/www/html/wordpress"
+              command: echo "update_option('home','http://${PublicAlbDnsName}/wordpress');" >> /var/www/html/wordpress/wp-content/themes/twentyseventeen/functions.php
+    Properties:
+      IamInstanceProfile: !Ref WebInstanceProfile
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+      InstanceType: !Ref WebInstanceType
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+      KeyName: !Ref EC2KeyName
+      InstanceType: !Ref WebInstanceType
+      SecurityGroups:
+      - !Ref WebSecurityGroup
+      UserData:
+       "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y aws-cfn-bootstrap 
+            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${ElasticFileSystem}.efs.${AWS::Region}.amazonaws.com:/ /var/www/html/wordpress
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource WebLaunchConfiguration --configsets wordpress --region ${AWS::Region}
+            yum -y update
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      Cooldown: 60
+      HealthCheckGracePeriod: 120
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref WebLaunchConfiguration
+      MaxSize: !Ref WebAsgMax
+      MinSize: !Ref WebAsgMin
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Web ASG / ', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      TargetGroupARNs: 
+        - !Ref PublicAlbTargetGroupArn
+      VPCZoneIdentifier: 
+        !If
+          [ NumberOfSubnets1,
+          [ !Select [ 0, !Ref Subnet ] ],
+          !If
+            [ NumberOfSubnets2,
+            [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ] ],
+            !If
+              [ NumberOfSubnets3,
+              [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ] ],
+              [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ], !Select [ 3, !Ref Subnet ] ]
+              ]
+            ]
+          ]
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref WebAsgMin
+        Timeout: PT5M
+  S3:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Retain
+Outputs:
+  wproot:
+    Description: Access URL for wordpress
+    Value: !Join ["", ["http://", !Ref PublicAlbDnsName, "/wordpress"]]
+  wpadmin:
+    Description: Admin Login URL - if restoring from snap, always go to this URL first
+    Value: !Join ["", ["http://", !Ref PublicAlbDnsName, "/wordpress/wp-login.php"]]
