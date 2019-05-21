@@ -3,6 +3,7 @@
 	Creates a New VPC with the Private and Public Subnet, The Bastion and ALB is hosted in Public Subnet and the wordpress app 
 	and Aurora DB Cluster with Master and Read Replica created in Private Subnet
 	Few things were omitted in interest of time, like CDN distribution, supporting all the regions.
+	For dev workload lower instances can be selected, however mininumt 2 AZ's has to be selected.
 	The reference architecutres and related assets that is publicly available was referred during creation 
 	of this stack. 
 	

@@ -58,7 +58,6 @@ Parameters:
 
   NumberOfAZs:
     AllowedValues:
-    - 1
     - 2
     - 3
     Default: 2
@@ -76,7 +75,7 @@ Parameters:
     Type: String
   AvailabilityZones:
     Description: 'List of Availability Zones to use for the subnets in the VPC. Note:
-      The logical order is preserved.'
+      Mininum 2 need to be selected.'
     Type: List<AWS::EC2::AvailabilityZone::Name>
   PublicSubnet0Cidr:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
@@ -300,7 +299,6 @@ Resources:
         Subnet:
           !GetAtt [ vpc, Outputs.PublicSubnet ]
       TemplateURL: https://s3-ap-southeast-2.amazonaws.com/nvn-wordpress/aws-bastion.yml
-      # TemplateURL: https://s3.amazonaws.com/aws-refarch/wordpress/latest/templates/aws-refarch-wordpress-03-bastion.yaml
   efsfilesystem:
     DependsOn: [ vpc, securitygroups ]
     Type: AWS::CloudFormation::Stack
